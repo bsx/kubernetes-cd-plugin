@@ -146,7 +146,7 @@ public class KubernetesClientWrapper {
     }
 
     /**
-     * Get related updater in{@link ResourceUpdaterMap} by resource's class type and handle the resource by updater
+     * Get related updater in{@link ResourceUpdaterMap} by resource's class type and handle the resource by updater.
      *
      * @param resource k8s resource
      */

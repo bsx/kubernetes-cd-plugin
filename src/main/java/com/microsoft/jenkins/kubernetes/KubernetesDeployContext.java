@@ -17,15 +17,10 @@ import com.microsoft.jenkins.azurecommons.command.CommandService;
 import com.microsoft.jenkins.azurecommons.command.IBaseCommandData;
 import com.microsoft.jenkins.azurecommons.command.ICommand;
 import com.microsoft.jenkins.azurecommons.command.SimpleBuildStepExecution;
-import com.microsoft.jenkins.azurecommons.remote.SSHClient;
 import com.microsoft.jenkins.kubernetes.command.DeploymentCommand;
 import com.microsoft.jenkins.kubernetes.credentials.ClientWrapperFactory;
-import com.microsoft.jenkins.kubernetes.credentials.ConfigFileCredentials;
 import com.microsoft.jenkins.kubernetes.credentials.KubeconfigCredentials;
-import com.microsoft.jenkins.kubernetes.credentials.KubernetesCredentialsType;
 import com.microsoft.jenkins.kubernetes.credentials.ResolvedDockerRegistryEndpoint;
-import com.microsoft.jenkins.kubernetes.credentials.SSHCredentials;
-import com.microsoft.jenkins.kubernetes.credentials.TextCredentials;
 import com.microsoft.jenkins.kubernetes.util.Constants;
 import com.microsoft.jenkins.kubernetes.wrapper.KubernetesClientWrapper;
 import hudson.Extension;
@@ -61,9 +56,6 @@ public class KubernetesDeployContext extends BaseCommandContext implements
     private String kubeconfigId;
 
     private String credentialsType;
-    private SSHCredentials ssh;
-    private ConfigFileCredentials kubeConfig;
-    private TextCredentials textCredentials;
 
     private String configs;
     private boolean enableConfigSubstitution;
@@ -99,58 +91,6 @@ public class KubernetesDeployContext extends BaseCommandContext implements
     @DataBoundSetter
     public void setKubeconfigId(String kubeconfigId) {
         this.kubeconfigId = kubeconfigId;
-    }
-
-    @Deprecated
-    public String getCredentialsType() {
-        if (StringUtils.isEmpty(credentialsType)) {
-            return KubernetesCredentialsType.DEFAULT.name();
-        }
-        return credentialsType;
-    }
-
-    @Deprecated
-    public KubernetesCredentialsType getCredentialsTypeEnum() {
-        return KubernetesCredentialsType.fromString(getCredentialsType());
-    }
-
-    @DataBoundSetter
-    @Deprecated
-    public void setCredentialsType(String credentialsType) {
-        this.credentialsType = StringUtils.trimToEmpty(credentialsType);
-    }
-
-    @Deprecated
-    public SSHCredentials getSsh() {
-        return ssh;
-    }
-
-    @Deprecated
-    @DataBoundSetter
-    public void setSsh(SSHCredentials ssh) {
-        this.ssh = ssh;
-    }
-
-    @Deprecated
-    public ConfigFileCredentials getKubeConfig() {
-        return kubeConfig;
-    }
-
-    @Deprecated
-    @DataBoundSetter
-    public void setKubeConfig(ConfigFileCredentials kubeConfig) {
-        this.kubeConfig = kubeConfig;
-    }
-
-    @Deprecated
-    public TextCredentials getTextCredentials() {
-        return textCredentials;
-    }
-
-    @Deprecated
-    @DataBoundSetter
-    public void setTextCredentials(TextCredentials textCredentials) {
-        this.textCredentials = textCredentials;
     }
 
     @Override
@@ -261,18 +201,7 @@ public class KubernetesDeployContext extends BaseCommandContext implements
             return new ClientWrapperFactoryImpl(credentials);
         }
 
-        // Fallback to the legacy handling
-        switch (getCredentialsTypeEnum()) {
-            case SSH:
-                return getSsh().buildClientWrapperFactory(owner);
-            case KubeConfig:
-                return getKubeConfig().buildClientWrapperFactory(owner);
-            case Text:
-                return getTextCredentials().buildClientWrapperFactory(owner);
-            default:
-                throw new IllegalStateException(
-                        Messages.KubernetesDeployContext_unknownCredentialsType(getCredentialsTypeEnum()));
-        }
+        throw new IllegalStateException(Messages.KubernetesDeployContext_configsNotConfigured());
     }
 
     @Override
@@ -287,14 +216,6 @@ public class KubernetesDeployContext extends BaseCommandContext implements
 
     @Extension
     public static final class DescriptorImpl extends StepDescriptor {
-        public ListBoxModel doFillCredentialsTypeItems() {
-            ListBoxModel model = new ListBoxModel();
-            for (KubernetesCredentialsType type : KubernetesCredentialsType.values()) {
-                model.add(type.title(), type.name());
-            }
-            return model;
-        }
-
         public ListBoxModel doFillKubeconfigIdItems(@AncestorInPath Item owner) {
             StandardListBoxModel model = new StandardListBoxModel();
             model.includeEmptyValue();
@@ -305,22 +226,10 @@ public class KubernetesDeployContext extends BaseCommandContext implements
         public FormValidation doVerifyConfiguration(
                 @AncestorInPath Item owner,
                 @QueryParameter("kubeconfigId") String configId,
-                @QueryParameter String credentialsType,
-                @QueryParameter("path") String kubeconfigPath,
-                @QueryParameter String sshServer,
-                @QueryParameter String sshCredentialsId,
-                @QueryParameter("serverUrl") String txtServerUrl,
-                @QueryParameter("certificateAuthorityData") String txtCertificateAuthorityData,
-                @QueryParameter("clientCertificateData") String txtClientCertificateData,
-                @QueryParameter("clientKeyData") String txtClientKeyData,
                 @QueryParameter String configs) {
             try {
                 return verifyConfigurationInternal(owner,
                         configId,
-                        credentialsType,
-                        kubeconfigPath,
-                        sshServer, sshCredentialsId,
-                        txtServerUrl, txtCertificateAuthorityData, txtClientCertificateData, txtClientKeyData,
                         configs);
             } catch (Exception ex) {
                 return FormValidation.error(ex.getMessage());
@@ -329,99 +238,22 @@ public class KubernetesDeployContext extends BaseCommandContext implements
 
         private FormValidation verifyConfigurationInternal(Item owner,
                                                            String configId,
-                                                           String credentialsType,
-                                                           String kubeconfigPath,
-                                                           String sshServer,
-                                                           String sshCredentialsId,
-                                                           String txtServerUrl,
-                                                           String txtCertificateAuthorityData,
-                                                           String txtClientCertificateData,
-                                                           String txtClientKeyData,
                                                            String configs) {
-            if (StringUtils.isNotBlank(configId)) {
-                final KubeconfigCredentials credentials = CredentialsMatchers.firstOrNull(
-                        CredentialsProvider.lookupCredentials(
-                                KubeconfigCredentials.class,
-                                owner,
-                                ACL.SYSTEM,
-                                Collections.<DomainRequirement>emptyList()),
-                        CredentialsMatchers.withId(configId));
-                if (credentials == null) {
-                    return FormValidation.error(
-                            Messages.KubernetesDeployContext_kubeconfigCredentialsNotFound(configId));
-                }
-                credentials.bindToAncestor(owner);
-                String content = credentials.getContent();
-                if (StringUtils.isBlank(content)) {
-                    return FormValidation.error(Messages.KubernetesDeployContext_noKubeconfigContent());
-                }
-            } else {
-                switch (KubernetesCredentialsType.fromString(credentialsType)) {
-                    case KubeConfig:
-                        if (StringUtils.isBlank(kubeconfigPath)) {
-                            return FormValidation.error(Messages.errorMessage(
-                                    Messages.KubernetesDeployContext_kubeconfigNotConfigured()));
-                        }
-                        break;
-                    case SSH:
-                        if (StringUtils.isBlank(sshServer)) {
-                            return FormValidation.error(Messages.errorMessage(
-                                    Messages.KubernetesDeployContext_sshServerNotConfigured()));
-                        }
-                        if (StringUtils.isBlank(sshCredentialsId)
-                                || Constants.INVALID_OPTION.equals(sshCredentialsId)) {
-                            return FormValidation.error(Messages.errorMessage(
-                                    Messages.KubernetesDeployContext_sshCredentialsNotSelected()));
-                        }
-                        SSHCredentials sshCredentials = new SSHCredentials();
-                        sshCredentials.setSshCredentialsId(StringUtils.trimToEmpty(sshCredentialsId));
-                        sshCredentials.setSshServer(StringUtils.trimToEmpty(sshServer));
-                        try {
-                            SSHClient client = new SSHClient(
-                                    sshCredentials.getHost(),
-                                    sshCredentials.getPort(),
-                                    sshCredentials.getSshCredentials(owner));
-                            try (SSHClient connected = client.connect()) {
-                                try {
-                                    connected.execRemote(
-                                            "test -e " + Constants.KUBECONFIG_FILE, false, false);
-                                } catch (SSHClient.ExitStatusException e) {
-                                    return FormValidation.error(Messages.errorMessage(
-                                            Messages.KubernetesDeployContext_cannotFindKubeconfigOnServer(
-                                                    Constants.KUBECONFIG_FILE, sshServer)));
-                                }
-                            }
-                        } catch (Exception e) {
-                            return FormValidation.error(Messages.errorMessage(
-                                    Messages.KubernetesDeployContext_failedOnSSH(e.getMessage())));
-                        }
-                        break;
-                    case Text:
-                        txtServerUrl = StringUtils.trimToEmpty(txtServerUrl);
-                        if (StringUtils.isBlank(txtServerUrl)) {
-                            return FormValidation.error(Messages.errorMessage(
-                                    Messages.KubernetesDeployContext_serverUrlNotConfigured()));
-                        }
-                        if (!txtServerUrl.startsWith(Constants.HTTPS_PREFIX)) {
-                            return FormValidation.error(Messages.errorMessage(
-                                    Messages.KubernetesDeployContext_serverUrlNotHttps()));
-                        }
-                        if (StringUtils.isBlank(txtCertificateAuthorityData)) {
-                            return FormValidation.error(Messages.errorMessage(
-                                    Messages.KubernetesDeployContext_certificateAuthorityNotConfigured()));
-                        }
-                        if (StringUtils.isBlank(txtClientCertificateData)) {
-                            return FormValidation.error(Messages.errorMessage(
-                                    Messages.KubernetesDeployContext_clientCertificateDataNotConfigured()));
-                        }
-                        if (StringUtils.isBlank(txtClientKeyData)) {
-                            return FormValidation.error(Messages.errorMessage(
-                                    Messages.KubernetesDeployContext_clientKeyDataNotConfigured()));
-                        }
-                        break;
-                    default:
-                        break;
-                }
+            final KubeconfigCredentials credentials = CredentialsMatchers.firstOrNull(
+                    CredentialsProvider.lookupCredentials(
+                            KubeconfigCredentials.class,
+                            owner,
+                            ACL.SYSTEM,
+                            Collections.<DomainRequirement>emptyList()),
+                    CredentialsMatchers.withId(configId));
+            if (credentials == null) {
+                return FormValidation.error(
+                        Messages.KubernetesDeployContext_kubeconfigCredentialsNotFound(configId));
+            }
+            credentials.bindToAncestor(owner);
+            String content = credentials.getContent();
+            if (StringUtils.isBlank(content)) {
+                return FormValidation.error(Messages.KubernetesDeployContext_noKubeconfigContent());
             }
             if (StringUtils.isBlank(configs)) {
                 return FormValidation.error(Messages.errorMessage(

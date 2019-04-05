@@ -7,7 +7,9 @@
 package com.microsoft.jenkins.kubernetes.wrapper;
 
 import io.kubernetes.client.ApiException;
+import io.kubernetes.client.apis.BatchV1beta1Api;
 import io.kubernetes.client.apis.ExtensionsV1beta1Api;
+import io.kubernetes.client.models.V1beta1CronJob;
 import io.kubernetes.client.models.V1beta1DaemonSet;
 import io.kubernetes.client.models.V1beta1Ingress;
 import io.kubernetes.client.models.V1beta1ReplicaSet;
@@ -16,6 +18,7 @@ import static com.google.common.base.Preconditions.checkNotNull;
 
 public class V1beta1ResourceManager extends ResourceManager {
     private static final ExtensionsV1beta1Api EXTENSIONS_V1_BETA1_API_INSTANCE = new ExtensionsV1beta1Api();
+    private static final BatchV1beta1Api BATCH_V1_BETA1_API_INSTANCE = new BatchV1beta1Api();
     private V1beta1ResourceUpdateMonitor resourceUpdateMonitor = V1beta1ResourceUpdateMonitor.NOOP;
 
     public V1beta1ResourceManager() {
@@ -175,6 +178,53 @@ public class V1beta1ResourceManager extends ResourceManager {
         @Override
         void notifyUpdate(V1beta1Ingress original, V1beta1Ingress current) {
             resourceUpdateMonitor.onIngressUpdate(original, current);
+        }
+    }
+
+    class CronJobUpdater extends ResourceUpdater<V1beta1CronJob> {
+        CronJobUpdater(V1beta1CronJob cronjob) {
+            super(cronjob);
+        }
+
+        @Override
+        V1beta1CronJob getCurrentResource() {
+            V1beta1CronJob cronjob = null;
+            try {
+                cronjob = BATCH_V1_BETA1_API_INSTANCE.readNamespacedCronJob(getName(), getNamespace(), getPretty(),
+                        true, true);
+            } catch (ApiException e) {
+                handleApiException(e);
+            }
+            return cronjob;
+        }
+
+        @Override
+        V1beta1CronJob applyResource(V1beta1CronJob original, V1beta1CronJob current) {
+            V1beta1CronJob cronjob = null;
+            try {
+                cronjob = BATCH_V1_BETA1_API_INSTANCE.replaceNamespacedCronJob(getName(), getNamespace(), current,
+                        getPretty(), null);
+            } catch (ApiException e) {
+                handleApiException(e);
+            }
+            return cronjob;
+        }
+
+        @Override
+        V1beta1CronJob createResource(V1beta1CronJob current) {
+            V1beta1CronJob cronjob = null;
+            try {
+                cronjob = BATCH_V1_BETA1_API_INSTANCE.createNamespacedCronJob(getNamespace(), current,
+                        null, getPretty(), null);
+            } catch (ApiException e) {
+                handleApiException(e);
+            }
+            return cronjob;
+        }
+
+        @Override
+        void notifyUpdate(V1beta1CronJob original, V1beta1CronJob current) {
+            resourceUpdateMonitor.onCronJobUpdate(original, current);
         }
     }
 }

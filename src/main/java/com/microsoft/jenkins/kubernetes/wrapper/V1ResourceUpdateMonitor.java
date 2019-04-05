@@ -16,6 +16,7 @@ import io.kubernetes.client.models.V1ReplicaSet;
 import io.kubernetes.client.models.V1ReplicationController;
 import io.kubernetes.client.models.V1Secret;
 import io.kubernetes.client.models.V1Service;
+import io.kubernetes.client.models.V1StatefulSet;
 
 public interface V1ResourceUpdateMonitor {
     void onSecretUpdate(V1Secret original, V1Secret current);
@@ -29,6 +30,8 @@ public interface V1ResourceUpdateMonitor {
     void onReplicaSetUpdate(V1ReplicaSet original, V1ReplicaSet current);
 
     void onDaemonSetUpdate(V1DaemonSet original, V1DaemonSet current);
+
+    void onStatefulSetUpdate(V1StatefulSet original, V1StatefulSet current);
 
     void onJobUpdate(V1Job original, V1Job current);
 
@@ -64,6 +67,10 @@ public interface V1ResourceUpdateMonitor {
 
         @Override
         public void onDaemonSetUpdate(V1DaemonSet original, V1DaemonSet current) {
+        }
+
+        @Override
+        public void onStatefulSetUpdate(V1StatefulSet original, V1StatefulSet current) {
         }
 
         @Override

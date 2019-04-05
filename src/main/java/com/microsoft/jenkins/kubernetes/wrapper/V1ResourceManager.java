@@ -21,6 +21,7 @@ import io.kubernetes.client.models.V1ReplicationController;
 import io.kubernetes.client.models.V1Secret;
 import io.kubernetes.client.models.V1Service;
 import io.kubernetes.client.models.V1ServicePort;
+import io.kubernetes.client.models.V1StatefulSet;
 
 import java.util.HashMap;
 import java.util.List;
@@ -192,6 +193,53 @@ public class V1ResourceManager extends ResourceManager {
         @Override
         void notifyUpdate(V1DaemonSet original, V1DaemonSet current) {
             resourceUpdateMonitor.onDaemonSetUpdate(original, current);
+        }
+    }
+
+    class StatefulSetUpdater extends ResourceUpdater<V1StatefulSet> {
+        StatefulSetUpdater(V1StatefulSet rc) {
+            super(rc);
+        }
+
+        @Override
+        V1StatefulSet getCurrentResource() {
+            V1StatefulSet statefulSet = null;
+            try {
+                statefulSet = APPS_V1_API_INSTANCE.readNamespacedStatefulSet(getName(), getNamespace(), getPretty(),
+                        true, true);
+            } catch (ApiException e) {
+                handleApiException(e);
+            }
+            return statefulSet;
+        }
+
+        @Override
+        V1StatefulSet applyResource(V1StatefulSet original, V1StatefulSet current) {
+            V1StatefulSet statefulSet = null;
+            try {
+                statefulSet = APPS_V1_API_INSTANCE.replaceNamespacedStatefulSet(getName(), getNamespace(), current,
+                        getPretty(), null);
+            } catch (ApiException e) {
+                handleApiException(e);
+            }
+            return statefulSet;
+        }
+
+        @Override
+        V1StatefulSet createResource(V1StatefulSet current) {
+            V1StatefulSet statefulSet = null;
+            try {
+                statefulSet = APPS_V1_API_INSTANCE.createNamespacedStatefulSet(getNamespace(), current, null,
+                        getPretty(), null);
+            } catch (ApiException e) {
+                handleApiException(e);
+            }
+            return statefulSet;
+        }
+
+        @Override
+        void notifyUpdate(V1StatefulSet original, V1StatefulSet current) {
+            resourceUpdateMonitor.onStatefulSetUpdate(original, current);
         }
     }
 
